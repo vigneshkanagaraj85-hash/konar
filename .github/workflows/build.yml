@@ -49,9 +49,8 @@ jobs:
       - id: deploy
         uses: actions/deploy-pages@v4
 
-  # 2) Run manually (Actions → Run workflow) → builds the APK once
+  # 2) Builds the APK on every push (download from the run's Artifacts)
   build-apk:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
