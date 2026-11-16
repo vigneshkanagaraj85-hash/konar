@@ -25,6 +25,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Find app folder
         run: |
+          for z in *.zip; do [ -f "$z" ] && unzip -oq "$z" -d _unzipped && echo "Unzipped $z"; done
           F=$(find . -path ./node_modules -prune -o -path '*/www/index.html' -print | head -1)
           if [ -z "$F" ]; then
             echo "::error::www/index.html not found in the repo. Upload the www folder (index.html, sw.js, manifest.json, logo.png, icons/) to GitHub."
@@ -56,6 +57,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Find app folder
         run: |
+          for z in *.zip; do [ -f "$z" ] && unzip -oq "$z" -d _unzipped && echo "Unzipped $z"; done
           F=$(find . -path ./node_modules -prune -o -path '*/www/index.html' -print | head -1)
           if [ -z "$F" ]; then
             echo "::error::www/index.html not found in the repo. Upload the www folder (index.html, sw.js, manifest.json, logo.png, icons/) to GitHub."
