@@ -23,8 +23,20 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Find app folder
+        run: |
+          F=$(find . -path ./node_modules -prune -o -path '*/www/index.html' -print | head -1)
+          if [ -z "$F" ]; then
+            echo "::error::www/index.html not found in the repo. Upload the www folder (index.html, sw.js, manifest.json, logo.png, icons/) to GitHub."
+            echo "Files in repo:"; find . -path ./.git -prune -o -type f -print | head -50
+            exit 1
+          fi
+          D=$(dirname "$(dirname "$F")")
+          echo "APP_DIR=$D" >> $GITHUB_ENV
+          echo "App folder: $D"
       - name: Stamp version
         run: |
+          cd "$APP_DIR"
           VER=$(grep -oP "APP_VERSION='\K[^']+" www/index.html)
           echo "{\"version\":\"$VER\",\"built\":\"$(date -u +%FT%TZ)\"}" > www/version.json
           sed -i "s/konar-stock-v1/konar-stock-$VER-${GITHUB_SHA::7}/" www/sw.js
@@ -32,7 +44,7 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: www
+          path: ${{ env.APP_DIR }}/www
       - id: deploy
         uses: actions/deploy-pages@v4
 
@@ -42,6 +54,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Find app folder
+        run: |
+          F=$(find . -path ./node_modules -prune -o -path '*/www/index.html' -print | head -1)
+          if [ -z "$F" ]; then
+            echo "::error::www/index.html not found in the repo. Upload the www folder (index.html, sw.js, manifest.json, logo.png, icons/) to GitHub."
+            echo "Files in repo:"; find . -path ./.git -prune -o -type f -print | head -50
+            exit 1
+          fi
+          D=$(dirname "$(dirname "$F")")
+          echo "APP_DIR=$D" >> $GITHUB_ENV
+          echo "App folder: $D"
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -49,6 +72,10 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - name: Move app to repo root
+        run: |
+          if [ "$APP_DIR" != "." ]; then cp -r "$APP_DIR"/. . ; fi
+          ls
       - run: npm install
       - run: npx cap add android
       - name: App icon
