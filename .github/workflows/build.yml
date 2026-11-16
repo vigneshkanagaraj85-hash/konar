@@ -18,6 +18,8 @@ jobs:
   # 1) Every push → the app on everyone's phone updates (no new APK needed)
   deploy-web:
     runs-on: ubuntu-latest
+    outputs:
+      page_url: ${{ steps.deploy.outputs.page_url }}
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -51,6 +53,7 @@ jobs:
 
   # 2) Builds the APK on every push (download from the run's Artifacts)
   build-apk:
+    needs: deploy-web
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -77,6 +80,15 @@ jobs:
         run: |
           if [ "$APP_DIR" != "." ]; then cp -r "$APP_DIR"/. . ; fi
           ls
+      - name: Point app to this repo's GitHub Pages URL
+        env:
+          PAGE_URL: ${{ needs.deploy-web.outputs.page_url }}
+        run: |
+          URL="$PAGE_URL"
+          [ -z "$URL" ] && URL="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/"
+          case "$URL" in */) ;; *) URL="$URL/";; esac
+          python3 -c "import json,sys;p='capacitor.config.json';c=json.load(open(p));c['server']['url']=sys.argv[1];json.dump(c,open(p,'w'),indent=2)" "$URL"
+          echo "App URL: $URL"; cat capacitor.config.json
       - run: npm install
       - run: npx cap add android
       - name: App icon
