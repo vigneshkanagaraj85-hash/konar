@@ -43,6 +43,8 @@ jobs:
           VER=$(grep -oP "APP_VERSION='\K[^']+" www/index.html)
           echo "{\"version\":\"$VER\",\"built\":\"$(date -u +%FT%TZ)\"}" > www/version.json
           sed -i "s/konar-stock-v1/konar-stock-$VER-${GITHUB_SHA::7}/" www/sw.js
+          cp www/index.html www/admin.html
+          cp www/index.html www/staff.html
           echo "Version $VER"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
@@ -51,10 +53,22 @@ jobs:
       - id: deploy
         uses: actions/deploy-pages@v4
 
-  # 2) Builds the APK on every push (download from the run's Artifacts)
+  # 2) Builds two APKs on every push: Admin app + Staff app (download from the run's Artifacts)
   build-apk:
     needs: deploy-web
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - edition: admin
+            app_id: com.trmv.konarstock
+            app_name: Konar Admin
+            artifact: KonarStock-Admin-APK
+          - edition: staff
+            app_id: com.trmv.konarstock.staff
+            app_name: Konar Staff
+            artifact: KonarStock-Staff-APK
     steps:
       - uses: actions/checkout@v4
       - name: Find app folder
@@ -80,14 +94,15 @@ jobs:
         run: |
           if [ "$APP_DIR" != "." ]; then cp -r "$APP_DIR"/. . ; fi
           ls
-      - name: Point app to this repo's GitHub Pages URL
+      - name: Point ${{ matrix.edition }} app to this repo's GitHub Pages URL
         env:
           PAGE_URL: ${{ needs.deploy-web.outputs.page_url }}
         run: |
           URL="$PAGE_URL"
           [ -z "$URL" ] && URL="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/"
           case "$URL" in */) ;; *) URL="$URL/";; esac
-          python3 -c "import json,sys;p='capacitor.config.json';c=json.load(open(p));c['server']['url']=sys.argv[1];json.dump(c,open(p,'w'),indent=2)" "$URL"
+          URL="${URL}${{ matrix.edition }}.html"
+          python3 -c "import json,sys;p='capacitor.config.json';c=json.load(open(p));c['server']['url']=sys.argv[1];c['appId']=sys.argv[2];c['appName']=sys.argv[3];json.dump(c,open(p,'w'),indent=2)" "$URL" "${{ matrix.app_id }}" "${{ matrix.app_name }}"
           echo "App URL: $URL"; cat capacitor.config.json
       - run: npm install
       - run: npx cap add android
@@ -95,9 +110,9 @@ jobs:
         run: |
           RES=android/app/src/main/res
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-            cp www/icons/icon-512.png $RES/mipmap-$d/ic_launcher.png
-            cp www/icons/icon-512.png $RES/mipmap-$d/ic_launcher_round.png
-            cp www/icons/icon-512.png $RES/mipmap-$d/ic_launcher_foreground.png
+            cp www/icons/icon-${{ matrix.edition }}-512.png $RES/mipmap-$d/ic_launcher.png
+            cp www/icons/icon-${{ matrix.edition }}-512.png $RES/mipmap-$d/ic_launcher_round.png
+            cp www/icons/icon-${{ matrix.edition }}-512.png $RES/mipmap-$d/ic_launcher_foreground.png
           done
           rm -rf $RES/mipmap-anydpi-v26
       - name: Permissions (backup to Documents, fingerprint)
@@ -106,10 +121,14 @@ jobs:
           sed -i 's#<application#<application android:requestLegacyExternalStorage="true"#' android/app/src/main/AndroidManifest.xml
           grep -n "permission\|requestLegacy" android/app/src/main/AndroidManifest.xml
       - run: npx cap sync android
+      - name: Fixed signing key (so new APKs install over old ones without uninstalling)
+        run: |
+          mkdir -p ~/.android
+          if [ -f keystore/debug.keystore ]; then cp keystore/debug.keystore ~/.android/debug.keystore; fi
       - name: Build APK
         run: cd android && chmod +x gradlew && ./gradlew assembleDebug
-      - run: cp android/app/build/outputs/apk/debug/app-debug.apk KonarStock.apk
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk "${{ matrix.artifact }}.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: KonarStock-APK
-          path: KonarStock.apk
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.apk
